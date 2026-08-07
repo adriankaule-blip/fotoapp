@@ -62,10 +62,19 @@ Output (batch): `<outDir>/{<name>-improved.jpg, <name>-story.jpg}` — names mat
 - `GEMINI_API_KEY` in `.env` (gitignored) — Google AI Studio key.
 - Pro generation ≈ 20-25s, ~$0.13/image (2K).
 
-## Next Step (planned, not started)
+## Web App (Next.js, built 2026-08-07)
 
-Turn this into an **online app with drag & drop** for single-image use:
-- User drops one photo → picks a scene (or the app suggests one from the image) → gets the improved image + 9:16 story card back
-- Reuse `STRUCTURE_BLOCK`, `SCENES`, generation + retry logic, and `composeStoryCard` from `scripts/home-transform.ts` — extract them into a shared module the web backend can import
-- Backend needs to hold the Gemini key server-side (never expose it to the browser); generation takes ~20s so the UI needs progress state
-- Keep the CLI working — the web app is an additional frontend, not a replacement
+Drag & drop single-image app. User drops a photo, picks a **style** (klassisk, moderne, romantisk, minimalistisk, landlig, luksus — Adrian's directive: styles are the user-facing choice, the AI identifies the room/exterior itself), edits the caption, enters the passcode → gets the improved image + 9:16 story card back as downloads. **Stateless: nothing is stored** — images live in memory for the duration of the request only.
+
+- `app/page.tsx` — client UI (Danish). Downscales to 2048px in the browser before upload (keeps requests under Vercel's 4.5 MB limit)
+- `app/api/improve/route.ts` — passcode check (`APP_PASSCODE` env), Gemini call, story card composition, returns base64 data URLs. `maxDuration = 120`
+- `lib/engine.ts` — buffer-based generation + story card composition (shared with CLI)
+- `lib/scenes.ts` — scene prompts (CLI), `lib/styles.ts` — style prompts + adaptive space detection (web)
+
+Layout note: the `EFTER — AI` label must be positioned below the caption band (caption is composited last and covers the seam).
+
+## Deployment
+
+- GitHub: https://github.com/adriankaule-blip/fotoapp (public)
+- Vercel: auto-deploy on push to main. Env vars needed in Vercel: `GEMINI_API_KEY`, `APP_PASSCODE`
+- Local: `npm run dev` (reads `.env`; passcode is in there too)

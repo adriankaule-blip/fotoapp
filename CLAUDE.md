@@ -73,8 +73,16 @@ Drag & drop single-image app. User drops a photo, picks a **style** (klassisk, m
 
 Layout note: the `EFTER — AI` label must be positioned below the caption band (caption is composited last and covers the seam).
 
-## Deployment
+## Function Lock (Adrian's directive, 2026-08-07)
 
-- GitHub: https://github.com/adriankaule-blip/fotoapp (public)
-- Vercel: auto-deploy on push to main. Env vars needed in Vercel: `GEMINI_API_KEY`, `APP_PASSCODE`
-- Local: `npm run dev` (reads `.env`; passcode is in there too)
+Rooms must keep their purpose: a dressing room stays a dressing room (built-in wardrobes, mirror — NEVER a bed), bathrooms keep sanitary fixtures in place, kitchens keep their layout, hallways get entry furniture only. The style blocks' furniture lists are inspiration, not instructions. Background: a dressing-room photo was staged as a bedroom because the space-type list lacked dressing rooms. Lives in `buildStylePrompt()` in `lib/styles.ts`.
+
+## Deployment (Cloud Run — same pattern as loveOS)
+
+- **Live**: https://fotoapp-3coscfrzxa-ew.a.run.app (public, passcode-gated generation)
+- GitHub: https://github.com/adriankaule-blip/fotoapp (public repo)
+- GCP project `gen-lang-client-0946074725`, region `europe-west1`, service `fotoapp`
+- **Secrets in GCP Secret Manager** (never in code/repo/image): `fotoapp-gemini-key` → env `GEMINI_API_KEY`, `fotoapp-passcode` → env `APP_PASSCODE` (fotoapp has its OWN secrets — do not touch loveOS's shared `GEMINI_API_KEY` secret)
+- Deploy: `gcloud run deploy fotoapp --source . --region europe-west1 --quiet` (Dockerfile: node:20-alpine multi-stage, Next standalone output; `ttf-dejavu` is REQUIRED or story-card captions render as empty boxes; `font-noto-serif` does not exist on Alpine)
+- `.gcloudignore`/`.dockerignore` exclude `files_sneden/` (1 GB of photos), `output/`, `.env`
+- Local dev: `npm run dev` (reads `.env` — key + passcode)

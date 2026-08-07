@@ -1,0 +1,16 @@
+{
+  "outDir": "output/sneden_forbedret",
+  "jobs": [
+    { "image": "files_sneden/danske_sneden_fotos/13758404_6-328-17_photo_print_15.jpg", "scene": "ude", "caption": "Hvidmalet hus og nyklippet græsplæne" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_10-328-17_photo_print_19.jpg", "scene": "ude", "caption": "Hvid facade, rent tag og ryddet gårdsplads" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_11-328-17_photo_print_20.jpg", "scene": "ude", "caption": "Algefrit tag og velplejet have" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_40-328-17_photo_print_28.jpg", "scene": "ude", "caption": "Gårdhaven — hvidmalet og indbydende" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_20-328-17_photo_print_31.jpg", "scene": "dining-room", "caption": "Ny spisestue med egetræsgulv" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_21-328-17_photo_print_32.jpg", "scene": "living-room", "caption": "Stuen — nyt gulv og nye møbler" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_26-328-17_photo_print_38.jpg", "scene": "office", "caption": "Kontoret — lyst og ryddeligt" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_28-328-17_photo_print_35.jpg", "scene": "sunroom", "caption": "Havestuen — lys og indbydende" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_30-328-17_photo_print_34.jpg", "scene": "bedroom", "caption": "Soveværelset — varmt og roligt" },
+    { "image": "files_sneden/danske_sneden_fotos/DSC06646_1.jpg", "scene": "oppe", "caption": "Førstesalen — ny stue med loft til kip" },
+    { "image": "files_sneden/danske_sneden_fotos/DSC06651.jpg", "scene": "oppe", "caption": "Loft til kip og hyggekrog ovenpå" }
+  ]
+}

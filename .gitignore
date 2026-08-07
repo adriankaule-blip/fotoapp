@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env*.local
+output/
+files_sneden/
+output_samples/
+.next/
+.vercel
+next-env.d.ts
+*.tsbuildinfo
+.DS_Store
+.claude/

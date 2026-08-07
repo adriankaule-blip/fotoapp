@@ -1,0 +1,9 @@
+{
+  "outDir": "output/sneden_moderne",
+  "jobs": [
+    { "image": "files_sneden/danske_sneden_fotos/13758404_6-328-17_photo_print_15.jpg", "scene": "ude-moderne", "caption": "Sort skifertag og moderne sorte vinduer" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_10-328-17_photo_print_19.jpg", "scene": "ude-moderne", "caption": "Moderniseret med skifertag og nye vinduer" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_11-328-17_photo_print_20.jpg", "scene": "ude-moderne", "caption": "Nyt sort tag — samme hus, nyt look" },
+    { "image": "files_sneden/danske_sneden_fotos/13758404_40-328-17_photo_print_28.jpg", "scene": "ude-moderne", "caption": "Gårdhaven — moderne og velholdt" }
+  ]
+}

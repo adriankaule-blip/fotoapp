@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env*.local
+output
+files_sneden
+output_samples
+*.md
+.DS_Store
+.claude
+.vercel

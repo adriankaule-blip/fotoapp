@@ -110,7 +110,17 @@ IF EXTERIOR/GARDEN:
 export function buildStylePrompt(styleKey: string): string {
   const style = STYLES[styleKey]
   if (!style) throw new Error(`Unknown style: ${styleKey}`)
-  return `Renovate the space in this photo. FIRST identify what kind of space it is (living room, kitchen, bedroom, bathroom, office, attic, hallway, house exterior, garden, courtyard, garage ...) and then apply a tasteful renovation in the style described below, appropriate for that kind of space.
+  return `Renovate the space in this photo. FIRST identify what kind of space it is (living room, kitchen, bedroom, bathroom, walk-in closet / dressing room, home office, hallway/entry, laundry/utility room, attic, staircase, house exterior, garden, courtyard, garage ...) and then apply a tasteful renovation in the style described below, appropriate for that kind of space.
+
+FUNCTION LOCK — THE ROOM KEEPS ITS PURPOSE:
+- The renovated room must serve the SAME FUNCTION as in the input photo — a dressing room stays a dressing room, a kitchen stays a kitchen, a hallway stays a hallway
+- NEVER convert the room into a different room type
+- Only add furniture that belongs to the room's existing function: a bed ONLY if the input clearly shows a bedroom, a sofa ONLY in living spaces, wardrobes/shelving in dressing rooms, etc.
+- If clothes storage dominates the input (racks, wardrobes, shoes), it is a DRESSING ROOM: style it with beautiful built-in wardrobes, open shelving, a full-length mirror, an island or bench — NOT a bed
+- BATHROOMS keep their sanitary fixtures (tub, shower, toilet, sink) in the exact same positions — refresh surfaces and styling only
+- KITCHENS keep their kitchen function and cabinet layout — refresh fronts, countertop and styling; never remove the kitchen
+- Hallways/entries get wardrobe hooks, a bench, a mirror — never living room or bedroom furniture
+- The furniture examples in the style description below are inspiration for the STYLE — pick only the ones matching this room's function
 
 ${STRUCTURE_BLOCK}
 

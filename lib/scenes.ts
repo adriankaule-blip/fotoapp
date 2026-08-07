@@ -19,6 +19,7 @@ WHAT TO IMPROVE (the renovation):
 - ALL loose furniture, freestanding storage, clutter and textiles from the input are REMOVED and replaced per the scene instructions
 - Floors are upgraded unless the scene says otherwise
 - Furniture, rugs/carpets, textiles, lighting fixtures, wall paint, decor, styling, tidiness
+- The room KEEPS ITS FUNCTION — never convert it into a different room type, unless the scene instructions explicitly say so
 - Scene-specific instructions below define the exact scope
 
 PHOTOREALISM — ANTI-AI MANDATE:

@@ -23,6 +23,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Fonts for sharp's SVG text rendering (story card captions) — without these,
+# text renders as empty boxes on Alpine
+RUN apk add --no-cache fontconfig ttf-dejavu font-noto-serif && fc-cache -f
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 

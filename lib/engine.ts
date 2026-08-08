@@ -115,9 +115,8 @@ function captionSvg(width: number, text: string, fontSize: number): Buffer {
   return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${svgLines}</svg>`)
 }
 
-function labelSvg(text: string): Buffer {
-  const fontSize = 34
-  const w = text.length * (fontSize * 0.72 + 3) + 48
+function labelSvg(text: string, fontSize = 34): Buffer {
+  const w = text.length * (fontSize * 0.72 + 3) + Math.round(fontSize * 1.4)
   return Buffer.from(
     `<svg width="${w}" height="${fontSize + 28}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${w}" height="${fontSize + 28}" fill="white"/>
@@ -126,13 +125,14 @@ function labelSvg(text: string): Buffer {
   )
 }
 
-export async function composeStoryCard(
+/** Vertical before/after card: FØR on top, EFTER below, caption band on the seam. */
+async function composeVerticalCard(
   original: Buffer | string,
   improved: Buffer | string,
   caption: string,
+  W: number,
+  H: number,
 ): Promise<Buffer> {
-  const W = 1080
-  const H = 1920
   const half = H / 2
 
   const top = await sharp(original).rotate().resize(W, half, { fit: 'cover' }).toBuffer()
@@ -150,6 +150,51 @@ export async function composeStoryCard(
       { input: await sharp(labelSvg('EFTER — AI')).toBuffer(), top: Math.round(half + capH / 2) + 36, left: 40 },
       { input: await sharp(capSvg).toBuffer(), top: Math.round(half - capH / 2), left: 0 },
     ])
+    .jpeg({ quality: 92 })
+    .toBuffer()
+}
+
+/** 9:16 story card (1080x1920) — Instagram/Facebook story. */
+export async function composeStoryCard(original: Buffer | string, improved: Buffer | string, caption: string): Promise<Buffer> {
+  return composeVerticalCard(original, improved, caption, 1080, 1920)
+}
+
+/** 4:5 feed card (1080x1350) — Instagram/Facebook feed. */
+export async function composeFeedCard(original: Buffer | string, improved: Buffer | string, caption: string): Promise<Buffer> {
+  return composeVerticalCard(original, improved, caption, 1080, 1350)
+}
+
+/** Landscape side-by-side (2160x1080) — listing pages and presentations. */
+export async function composeSideBySide(original: Buffer | string, improved: Buffer | string): Promise<Buffer> {
+  const half = 1080
+  const left = await sharp(original).rotate().resize(half, half, { fit: 'cover' }).toBuffer()
+  const right = await sharp(improved).resize(half, half, { fit: 'cover' }).toBuffer()
+  return sharp({ create: { width: half * 2, height: half, channels: 3, background: '#000' } })
+    .composite([
+      { input: left, top: 0, left: 0 },
+      { input: right, top: 0, left: half },
+      { input: await sharp(labelSvg('FØR')).toBuffer(), top: 40, left: 40 },
+      { input: await sharp(labelSvg('EFTER — AI')).toBuffer(), top: 40, left: half + 40 },
+    ])
+    .jpeg({ quality: 92 })
+    .toBuffer()
+}
+
+/**
+ * Bake an "EFTER — AI" disclosure label into the corner of the improved image.
+ * AI-modified listing photos must be recognizable as such — the watermark is
+ * part of the output, not an optional overlay.
+ */
+export async function watermarkAfter(improved: Buffer): Promise<Buffer> {
+  const meta = await sharp(improved).metadata()
+  const w = meta.width || 2048
+  const h = meta.height || 1536
+  const fontSize = Math.max(24, Math.round(w / 45))
+  const label = await sharp(labelSvg('EFTER — AI', fontSize)).toBuffer()
+  const labelMeta = await sharp(label).metadata()
+  const margin = Math.round(w / 60)
+  return sharp(improved)
+    .composite([{ input: label, top: h - (labelMeta.height || 60) - margin, left: w - (labelMeta.width || 300) - margin }])
     .jpeg({ quality: 92 })
     .toBuffer()
 }

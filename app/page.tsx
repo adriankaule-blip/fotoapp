@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { styleList } from '../lib/styles'
+import { captionFor, modeList, styleList } from '../lib/styles'
 
 const STYLES = styleList()
+const MODES = modeList()
 const EXPECTED_SECONDS = 30
 const CONCURRENCY = 2
 
@@ -16,7 +17,7 @@ type Job = {
   previewUrl: string
   status: JobStatus
   startedAt?: number
-  result?: { improved: string; storyCard: string }
+  result?: { improved: string; storyCard: string; feedCard: string; sideBySide: string }
   error?: string
 }
 
@@ -48,6 +49,7 @@ function triggerDownload(href: string, filename: string) {
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([])
+  const [mode, setMode] = useState<string>('renovering')
   const [style, setStyle] = useState<string>('klassisk')
   const [caption, setCaption] = useState('')
   const [captionTouched, setCaptionTouched] = useState(false)
@@ -60,11 +62,8 @@ export default function Home() {
   jobsRef.current = jobs
 
   useEffect(() => {
-    if (!captionTouched) {
-      const s = STYLES.find(s => s.key === style)
-      if (s) setCaption(s.caption)
-    }
-  }, [style, captionTouched])
+    if (!captionTouched) setCaption(captionFor(mode, style))
+  }, [mode, style, captionTouched])
 
   useEffect(() => {
     if (!busy) return
@@ -101,7 +100,7 @@ export default function Home() {
     })
   }
 
-  async function runOne(id: string, opts: { style: string; caption: string; passcode: string }) {
+  async function runOne(id: string, opts: { mode: string; style: string; caption: string; passcode: string }) {
     const job = jobsRef.current.find(j => j.id === id)
     if (!job) return
     updateJob(id, { status: 'running', error: undefined, result: undefined, startedAt: Date.now() })
@@ -109,13 +108,17 @@ export default function Home() {
       const small = await downscale(job.file)
       const form = new FormData()
       form.append('image', small, 'photo.jpg')
+      form.append('mode', opts.mode)
       form.append('style', opts.style)
       form.append('caption', opts.caption)
       form.append('passcode', opts.passcode)
       const res = await fetch('/api/improve', { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `Fejl (${res.status})`)
-      updateJob(id, { status: 'done', result: { improved: data.improved, storyCard: data.storyCard } })
+      updateJob(id, {
+        status: 'done',
+        result: { improved: data.improved, storyCard: data.storyCard, feedCard: data.feedCard, sideBySide: data.sideBySide },
+      })
     } catch (err: any) {
       updateJob(id, { status: 'error', error: err.message || 'Noget gik galt' })
     }
@@ -124,7 +127,7 @@ export default function Home() {
   async function runJobs(ids: string[]) {
     if (busy || !ids.length) return
     setBusy(true)
-    const opts = { style, caption, passcode }
+    const opts = { mode, style, caption, passcode }
     const queue = [...ids]
     const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
       while (queue.length) {
@@ -211,20 +214,39 @@ export default function Home() {
         />
       </div>
 
-      <div className="section-label">Vælg stil</div>
-      <div className="styles">
-        {STYLES.map(s => (
+      <div className="section-label">Hvad skal der ske?</div>
+      <div className="modes">
+        {MODES.map(m => (
           <button
-            key={s.key}
-            className={`style-chip ${style === s.key ? 'active' : ''}`}
-            onClick={() => setStyle(s.key)}
+            key={m.key}
+            className={`style-chip ${mode === m.key ? 'active' : ''}`}
+            onClick={() => setMode(m.key)}
             type="button"
           >
-            <div className="name">{s.emoji} {s.name}</div>
-            <div className="desc">{s.description}</div>
+            <div className="name">{m.emoji} {m.name}</div>
+            <div className="desc">{m.description}</div>
           </button>
         ))}
       </div>
+
+      {MODES.find(m => m.key === mode)?.usesStyle && (
+        <>
+          <div className="section-label">Vælg stil</div>
+          <div className="styles">
+            {STYLES.map(s => (
+              <button
+                key={s.key}
+                className={`style-chip ${style === s.key ? 'active' : ''}`}
+                onClick={() => setStyle(s.key)}
+                type="button"
+              >
+                <div className="name">{s.emoji} {s.name}</div>
+                <div className="desc">{s.description}</div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="section-label">Billedtekst på kortene</div>
       <input
@@ -279,9 +301,11 @@ export default function Home() {
             ) : (
               <div key={j.id} className="result-item">
                 <img src={j.result!.storyCard} alt={`Før/efter-kort — ${j.name}`} className="card" />
-                <div className="actions">
-                  <a className="primary" href={j.result!.storyCard} download={`${baseName(j.name)}-story.jpg`}>Hent kortet</a>
-                  <a href={j.result!.improved} download={`${baseName(j.name)}-improved.jpg`}>Hent kun efter</a>
+                <div className="actions formats">
+                  <a className="primary" href={j.result!.storyCard} download={`${baseName(j.name)}-story.jpg`}>Story 9:16</a>
+                  <a href={j.result!.feedCard} download={`${baseName(j.name)}-feed.jpg`}>Feed 4:5</a>
+                  <a href={j.result!.sideBySide} download={`${baseName(j.name)}-side.jpg`}>Side om side</a>
+                  <a href={j.result!.improved} download={`${baseName(j.name)}-efter.jpg`}>Kun efter</a>
                   <button type="button" disabled={busy} onClick={() => runJobs([j.id])}>Generér igen ↻</button>
                 </div>
               </div>

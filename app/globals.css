@@ -306,3 +306,22 @@ footer.site {
   cursor: pointer;
   font-family: inherit;
 }
+
+/* --- Modes + format downloads --- */
+
+.modes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 480px) {
+  .modes { grid-template-columns: repeat(3, 1fr); }
+}
+
+.actions.formats { grid-template-columns: 1fr 1fr; }
+
+@media (min-width: 480px) {
+  .actions.formats { grid-template-columns: repeat(5, 1fr); }
+  .actions.formats a, .actions.formats button { font-size: 0.82rem; padding: 11px 6px; }
+}

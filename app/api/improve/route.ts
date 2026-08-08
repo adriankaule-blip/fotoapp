@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { composeStoryCard, generateWithRetry, modelChain, prepInput } from '../../../lib/engine'
-import { STYLES, buildStylePrompt } from '../../../lib/styles'
+import {
+  composeFeedCard,
+  composeSideBySide,
+  composeStoryCard,
+  generateWithRetry,
+  modelChain,
+  prepInput,
+  watermarkAfter,
+} from '../../../lib/engine'
+import { MODES, STYLES, buildPrompt, captionFor } from '../../../lib/styles'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -24,10 +32,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forkert adgangskode' }, { status: 401 })
   }
 
-  const styleKey = String(form.get('style') || '')
-  if (!STYLES[styleKey]) return NextResponse.json({ error: 'Ukendt stil' }, { status: 400 })
+  const modeKey = String(form.get('mode') || 'renovering')
+  const mode = MODES[modeKey]
+  if (!mode) return NextResponse.json({ error: 'Ukendt tilstand' }, { status: 400 })
 
-  const caption = String(form.get('caption') || '').slice(0, 120) || STYLES[styleKey].caption
+  const styleKey = String(form.get('style') || 'klassisk')
+  if (mode.usesStyle && !STYLES[styleKey]) return NextResponse.json({ error: 'Ukendt stil' }, { status: 400 })
+
+  const caption = String(form.get('caption') || '').slice(0, 120) || captionFor(modeKey, styleKey)
 
   const file = form.get('image')
   if (!(file instanceof File)) return NextResponse.json({ error: 'Intet billede modtaget' }, { status: 400 })
@@ -36,15 +48,24 @@ export async function POST(req: NextRequest) {
   try {
     const original = Buffer.from(await file.arrayBuffer())
     const prepped = await prepInput(original)
-    const result = await generateWithRetry(apiKey, modelChain('auto'), prepped, buildStylePrompt(styleKey), [15_000])
+    const result = await generateWithRetry(apiKey, modelChain('auto'), prepped, buildPrompt(modeKey, styleKey), [15_000])
     if (!result) return NextResponse.json({ error: 'Genereringen mislykkedes — prøv igen om lidt' }, { status: 502 })
 
-    const card = await composeStoryCard(prepped, result.buffer, caption)
+    const [story, feed, side, after] = await Promise.all([
+      composeStoryCard(prepped, result.buffer, caption),
+      composeFeedCard(prepped, result.buffer, caption),
+      composeSideBySide(prepped, result.buffer),
+      watermarkAfter(result.buffer),
+    ])
 
+    const dataUrl = (b: Buffer) => `data:image/jpeg;base64,${b.toString('base64')}`
     return NextResponse.json({
-      improved: `data:image/jpeg;base64,${result.buffer.toString('base64')}`,
-      storyCard: `data:image/jpeg;base64,${card.toString('base64')}`,
+      improved: dataUrl(after),
+      storyCard: dataUrl(story),
+      feedCard: dataUrl(feed),
+      sideBySide: dataUrl(side),
       model: result.model,
+      mode: modeKey,
     })
   } catch (err: any) {
     console.error('improve failed:', err)

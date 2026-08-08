@@ -34,6 +34,7 @@ RUN mkdir .next && chown nextjs:nodejs .next
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Belt-and-suspenders: sharp's native musl binaries live in @img/* platform
 # packages that the Next.js file tracer can miss

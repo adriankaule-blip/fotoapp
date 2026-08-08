@@ -47,16 +47,25 @@ function triggerDownload(href: string, filename: string) {
   a.remove()
 }
 
+type HistoryJob = { id: string; mode: string; style: string; caption: string; createdAt: string; files: string[] }
+type User = { email: string; name: string }
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [mode, setMode] = useState<string>('renovering')
   const [style, setStyle] = useState<string>('klassisk')
   const [caption, setCaption] = useState('')
   const [captionTouched, setCaptionTouched] = useState(false)
-  const [passcode, setPasscode] = useState('')
   const [drag, setDrag] = useState(false)
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(0)
+  const [user, setUser] = useState<User | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginCode, setLoginCode] = useState('')
+  const [loginBusy, setLoginBusy] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [history, setHistory] = useState<HistoryJob[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const jobsRef = useRef<Job[]>([])
   jobsRef.current = jobs
@@ -64,6 +73,54 @@ export default function Home() {
   useEffect(() => {
     if (!captionTouched) setCaption(captionFor(mode, style))
   }, [mode, style, captionTouched])
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await fetch('/api/jobs')
+      if (!res.ok) return
+      const data = await res.json()
+      setHistory(data.jobs || [])
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/me')
+      .then(r => r.json())
+      .then(data => {
+        setUser(data.user || null)
+        setAuthChecked(true)
+        if (data.user) loadHistory()
+      })
+      .catch(() => setAuthChecked(true))
+  }, [loadHistory])
+
+  async function login(e: React.FormEvent) {
+    e.preventDefault()
+    if (loginBusy) return
+    setLoginBusy(true)
+    setLoginError(null)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, code: loginCode }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Fejl (${res.status})`)
+      setUser({ email: data.email, name: data.name })
+      loadHistory()
+    } catch (err: any) {
+      setLoginError(err.message || 'Kunne ikke logge ind')
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    setUser(null)
+    setHistory([])
+  }
 
   useEffect(() => {
     if (!busy) return
@@ -100,7 +157,7 @@ export default function Home() {
     })
   }
 
-  async function runOne(id: string, opts: { mode: string; style: string; caption: string; passcode: string }) {
+  async function runOne(id: string, opts: { mode: string; style: string; caption: string }) {
     const job = jobsRef.current.find(j => j.id === id)
     if (!job) return
     updateJob(id, { status: 'running', error: undefined, result: undefined, startedAt: Date.now() })
@@ -111,9 +168,12 @@ export default function Home() {
       form.append('mode', opts.mode)
       form.append('style', opts.style)
       form.append('caption', opts.caption)
-      form.append('passcode', opts.passcode)
       const res = await fetch('/api/improve', { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
+      if (res.status === 401) {
+        setUser(null)
+        throw new Error('Din session er udløbet — log ind igen')
+      }
       if (!res.ok) throw new Error(data.error || `Fejl (${res.status})`)
       updateJob(id, {
         status: 'done',
@@ -127,7 +187,7 @@ export default function Home() {
   async function runJobs(ids: string[]) {
     if (busy || !ids.length) return
     setBusy(true)
-    const opts = { mode, style, caption, passcode }
+    const opts = { mode, style, caption }
     const queue = [...ids]
     const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
       while (queue.length) {
@@ -138,6 +198,7 @@ export default function Home() {
     })
     await Promise.all(workers)
     setBusy(false)
+    loadHistory()
   }
 
   function generate() {
@@ -160,11 +221,54 @@ export default function Home() {
     return Math.min(95, Math.round(((now - j.startedAt) / 1000 / EXPECTED_SECONDS) * 100))
   }
 
+  if (!authChecked) {
+    return (
+      <div className="wrap">
+        <header className="site"><h1>fotoapp</h1></header>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="wrap">
+        <header className="site">
+          <h1><a href="/" className="home-link">fotoapp</a></h1>
+          <p>Log ind for at forbedre dine boligfotos.</p>
+        </header>
+        <form className="login-card" onSubmit={login}>
+          <div className="section-label">E-mail</div>
+          <input
+            className="text"
+            type="email"
+            autoComplete="email"
+            value={loginEmail}
+            onChange={e => setLoginEmail(e.target.value)}
+          />
+          <div className="section-label">Kode</div>
+          <input
+            className="pass"
+            type="password"
+            autoComplete="current-password"
+            value={loginCode}
+            onChange={e => setLoginCode(e.target.value)}
+          />
+          <button className="go" disabled={!loginEmail || !loginCode || loginBusy} type="submit">
+            {loginBusy ? 'Logger ind…' : 'Log ind'}
+          </button>
+          {loginError && <div className="error">{loginError}</div>}
+        </form>
+        <footer className="site">Har du ikke en kode? Kontakt Adrian.</footer>
+      </div>
+    )
+  }
+
   return (
     <div className="wrap">
       <header className="site">
-        <h1>fotoapp</h1>
-        <p>Træk ét eller flere boligfotos ind, vælg en stil — få AI-renoverede før/efter-kort. Intet gemmes.</p>
+        <h1><a href="/" className="home-link">fotoapp</a></h1>
+        <p>Træk ét eller flere boligfotos ind, vælg hvad der skal ske — få AI-forbedrede før/efter-kort.</p>
+        <p className="whoami">{user.name} · <button className="linkish" type="button" onClick={logout}>Log ud</button></p>
       </header>
 
       <div
@@ -256,16 +360,7 @@ export default function Home() {
         onChange={e => { setCaption(e.target.value); setCaptionTouched(true) }}
       />
 
-      <div className="section-label">Adgangskode</div>
-      <input
-        className="pass"
-        type="password"
-        value={passcode}
-        placeholder="Adgangskode"
-        onChange={e => setPasscode(e.target.value)}
-      />
-
-      <button className="go" disabled={!pendingCount || busy || !passcode} onClick={generate} type="button">
+      <button className="go" disabled={!pendingCount || busy} onClick={generate} type="button">
         {busy
           ? `Genererer… (${doneJobs.length + jobs.filter(j => j.status === 'error').length}/${totalActive} færdige)`
           : pendingCount > 1
@@ -314,8 +409,23 @@ export default function Home() {
         </div>
       )}
 
+      {history.length > 0 && (
+        <div className="history">
+          <div className="section-label">Tidligere genereringer</div>
+          <div className="history-grid">
+            {history.map(h => (
+              <a key={h.id} className="history-item" href={`/api/file/${h.id}/story.jpg`} target="_blank" rel="noreferrer">
+                <img src={`/api/file/${h.id}/story.jpg`} alt={h.caption} loading="lazy" />
+                <span>{h.caption}</span>
+                <time>{new Date(h.createdAt).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}</time>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <footer className="site">
-        Billeder behandles kun i din session og gemmes aldrig på serveren.
+        Dine billeder gemmes i dit private arkiv, så du kan finde dem igen. Alle AI-billeder mærkes »EFTER — AI«.
       </footer>
     </div>
   )

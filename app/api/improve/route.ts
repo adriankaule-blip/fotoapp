@@ -1,4 +1,7 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import { getSession } from '../../../lib/auth'
+import { MODEL_COST_USD, recordJob } from '../../../lib/db'
 import {
   composeFeedCard,
   composeSideBySide,
@@ -9,27 +12,23 @@ import {
   watermarkAfter,
 } from '../../../lib/engine'
 import { MODES, STYLES, buildPrompt, captionFor } from '../../../lib/styles'
+import { saveJobFiles } from '../../../lib/storage'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
-// Everything happens in memory for the duration of the request — nothing is
-// written to disk or stored anywhere.
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'Server mangler GEMINI_API_KEY' }, { status: 500 })
+
+  const session = getSession(req)
+  if (!session) return NextResponse.json({ error: 'Log ind først' }, { status: 401 })
 
   let form: FormData
   try {
     form = await req.formData()
   } catch {
     return NextResponse.json({ error: 'Ugyldig forespørgsel' }, { status: 400 })
-  }
-
-  const passcode = String(form.get('passcode') || '')
-  const expected = process.env.APP_PASSCODE
-  if (expected && passcode !== expected) {
-    return NextResponse.json({ error: 'Forkert adgangskode' }, { status: 401 })
   }
 
   const modeKey = String(form.get('mode') || 'renovering')
@@ -58,6 +57,31 @@ export async function POST(req: NextRequest) {
       watermarkAfter(result.buffer),
     ])
 
+    // Persist for the user's history; a storage failure must not lose the
+    // result the user is waiting on.
+    const jobId = randomUUID()
+    try {
+      const files = await saveJobFiles(jobId, {
+        'original.jpg': prepped,
+        'efter.jpg': after,
+        'story.jpg': story,
+        'feed.jpg': feed,
+        'side.jpg': side,
+      })
+      await recordJob(jobId, {
+        email: session.email,
+        mode: modeKey,
+        style: mode.usesStyle ? styleKey : '',
+        caption,
+        model: result.model,
+        costUsd: MODEL_COST_USD[result.model] ?? 0.134,
+        createdAt: new Date().toISOString(),
+        files,
+      })
+    } catch (err) {
+      console.error(`persist failed for job ${jobId}:`, err)
+    }
+
     const dataUrl = (b: Buffer) => `data:image/jpeg;base64,${b.toString('base64')}`
     return NextResponse.json({
       improved: dataUrl(after),
@@ -66,6 +90,7 @@ export async function POST(req: NextRequest) {
       sideBySide: dataUrl(side),
       model: result.model,
       mode: modeKey,
+      jobId,
     })
   } catch (err: any) {
     console.error('improve failed:', err)

@@ -622,3 +622,61 @@ footer.site {
 
 /* Hero labels sit below the nav, not under it */
 .lhero .ba-label { top: 72px; }
+
+/* --- Login + history --- */
+
+.home-link { color: inherit; text-decoration: none; }
+
+.whoami { font-size: 0.85rem !important; margin-top: 10px !important; }
+
+.linkish {
+  border: none;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.login-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 8px 24px 24px;
+}
+
+.history { margin-top: 40px; }
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.history-item img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.history-item span {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.history-item time { font-size: 0.7rem; color: var(--muted); }

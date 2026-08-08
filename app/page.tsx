@@ -5,6 +5,20 @@ import { styleList } from '../lib/styles'
 
 const STYLES = styleList()
 const EXPECTED_SECONDS = 30
+const CONCURRENCY = 2
+
+type JobStatus = 'ready' | 'running' | 'done' | 'error'
+
+type Job = {
+  id: string
+  file: File
+  name: string
+  previewUrl: string
+  status: JobStatus
+  startedAt?: number
+  result?: { improved: string; storyCard: string }
+  error?: string
+}
 
 /** Downscale in the browser so uploads stay small (max 2048px JPEG). */
 async function downscale(file: File): Promise<Blob> {
@@ -19,19 +33,31 @@ async function downscale(file: File): Promise<Blob> {
   return new Promise(resolve => canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.92))
 }
 
+function baseName(name: string): string {
+  return name.replace(/\.[^.]+$/, '').replace(/[^\wæøåÆØÅ-]+/g, '-') || 'foto'
+}
+
+function triggerDownload(href: string, filename: string) {
+  const a = document.createElement('a')
+  a.href = href
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [jobs, setJobs] = useState<Job[]>([])
   const [style, setStyle] = useState<string>('klassisk')
   const [caption, setCaption] = useState('')
   const [captionTouched, setCaptionTouched] = useState(false)
   const [passcode, setPasscode] = useState('')
   const [drag, setDrag] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ improved: string; storyCard: string } | null>(null)
+  const [now, setNow] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const jobsRef = useRef<Job[]>([])
+  jobsRef.current = jobs
 
   useEffect(() => {
     if (!captionTouched) {
@@ -42,75 +68,146 @@ export default function Home() {
 
   useEffect(() => {
     if (!busy) return
-    setElapsed(0)
-    const t = setInterval(() => setElapsed(e => e + 1), 1000)
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [busy])
 
-  const pick = useCallback((f: File | undefined | null) => {
-    if (!f || !f.type.startsWith('image/')) return
-    setFile(f)
-    setResult(null)
-    setError(null)
-    setPreviewUrl(url => {
-      if (url) URL.revokeObjectURL(url)
-      return URL.createObjectURL(f)
-    })
+  const pick = useCallback((files: FileList | File[] | null | undefined) => {
+    if (!files) return
+    const images = Array.from(files).filter(f => f.type.startsWith('image/'))
+    if (!images.length) return
+    setJobs(prev => [
+      ...prev,
+      ...images.map(f => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file: f,
+        name: f.name,
+        previewUrl: URL.createObjectURL(f),
+        status: 'ready' as JobStatus,
+      })),
+    ])
   }, [])
 
-  async function generate() {
-    if (!file || busy) return
-    setBusy(true)
-    setError(null)
-    setResult(null)
+  function updateJob(id: string, patch: Partial<Job>) {
+    setJobs(js => js.map(j => (j.id === id ? { ...j, ...patch } : j)))
+  }
+
+  function removeJob(id: string) {
+    setJobs(js => {
+      const j = js.find(x => x.id === id)
+      if (j) URL.revokeObjectURL(j.previewUrl)
+      return js.filter(x => x.id !== id)
+    })
+  }
+
+  async function runOne(id: string, opts: { style: string; caption: string; passcode: string }) {
+    const job = jobsRef.current.find(j => j.id === id)
+    if (!job) return
+    updateJob(id, { status: 'running', error: undefined, result: undefined, startedAt: Date.now() })
     try {
-      const small = await downscale(file)
+      const small = await downscale(job.file)
       const form = new FormData()
       form.append('image', small, 'photo.jpg')
-      form.append('style', style)
-      form.append('caption', caption)
-      form.append('passcode', passcode)
+      form.append('style', opts.style)
+      form.append('caption', opts.caption)
+      form.append('passcode', opts.passcode)
       const res = await fetch('/api/improve', { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `Fejl (${res.status})`)
-      setResult({ improved: data.improved, storyCard: data.storyCard })
+      updateJob(id, { status: 'done', result: { improved: data.improved, storyCard: data.storyCard } })
     } catch (err: any) {
-      setError(err.message || 'Noget gik galt')
-    } finally {
-      setBusy(false)
+      updateJob(id, { status: 'error', error: err.message || 'Noget gik galt' })
     }
   }
 
-  const pct = Math.min(95, Math.round((elapsed / EXPECTED_SECONDS) * 100))
+  async function runJobs(ids: string[]) {
+    if (busy || !ids.length) return
+    setBusy(true)
+    const opts = { style, caption, passcode }
+    const queue = [...ids]
+    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      while (queue.length) {
+        const id = queue.shift()
+        if (!id) break
+        await runOne(id, opts)
+      }
+    })
+    await Promise.all(workers)
+    setBusy(false)
+  }
+
+  function generate() {
+    runJobs(jobs.filter(j => j.status === 'ready' || j.status === 'error').map(j => j.id))
+  }
+
+  const doneJobs = jobs.filter(j => j.status === 'done')
+  const pendingCount = jobs.filter(j => j.status === 'ready' || j.status === 'error').length
+  const runningCount = jobs.filter(j => j.status === 'running').length
+  const totalActive = busy ? jobs.filter(j => j.status !== 'ready').length : 0
+
+  function downloadAll() {
+    doneJobs.forEach((j, i) => {
+      setTimeout(() => triggerDownload(j.result!.storyCard, `${baseName(j.name)}-story.jpg`), i * 400)
+    })
+  }
+
+  function jobPct(j: Job): number {
+    if (!j.startedAt) return 0
+    return Math.min(95, Math.round(((now - j.startedAt) / 1000 / EXPECTED_SECONDS) * 100))
+  }
 
   return (
     <div className="wrap">
       <header className="site">
         <h1>fotoapp</h1>
-        <p>Træk et boligfoto ind, vælg en stil — få en AI-renoveret version som før/efter-kort. Intet gemmes.</p>
+        <p>Træk ét eller flere boligfotos ind, vælg en stil — få AI-renoverede før/efter-kort. Intet gemmes.</p>
       </header>
 
       <div
-        className={`dropzone ${drag ? 'drag' : ''}`}
+        className={`dropzone ${drag ? 'drag' : ''} ${jobs.length ? 'has-files' : ''}`}
         onClick={() => inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDrag(true) }}
         onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]) }}
+        onDrop={e => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files) }}
       >
-        {previewUrl ? (
-          <img src={previewUrl} alt="Dit foto" className="preview" />
+        {jobs.length ? (
+          <>
+            <div className="thumbs" onClick={e => e.stopPropagation()}>
+              {jobs.map(j => (
+                <div key={j.id} className={`thumb ${j.status}`}>
+                  <img src={j.previewUrl} alt={j.name} />
+                  {j.status === 'running' && (
+                    <div className="thumb-progress"><div style={{ width: `${jobPct(j)}%` }} /></div>
+                  )}
+                  {j.status === 'done' && <span className="badge ok">✓</span>}
+                  {j.status === 'error' && <span className="badge err">!</span>}
+                  {!busy && (
+                    <button className="rm" type="button" title="Fjern" onClick={() => removeJob(j.id)}>✕</button>
+                  )}
+                </div>
+              ))}
+              {!busy && (
+                <button className="thumb add" type="button" onClick={() => inputRef.current?.click()}>+</button>
+              )}
+            </div>
+            <p className="queue-note">
+              {jobs.length} {jobs.length === 1 ? 'billede' : 'billeder'} — træk flere hertil eller klik +
+            </p>
+          </>
         ) : (
           <>
             <div className="big">📷</div>
-            <p><strong>Træk et billede hertil</strong> eller klik for at vælge</p>
+            <p><strong>Træk billeder hertil</strong> eller klik for at vælge — gerne mange ad gangen</p>
           </>
         )}
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
+          multiple
           hidden
-          onChange={e => pick(e.target.files?.[0])}
+          onChange={e => { pick(e.target.files); e.target.value = '' }}
         />
       </div>
 
@@ -129,7 +226,7 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="section-label">Billedtekst på kortet</div>
+      <div className="section-label">Billedtekst på kortene</div>
       <input
         className="text"
         value={caption}
@@ -146,27 +243,50 @@ export default function Home() {
         onChange={e => setPasscode(e.target.value)}
       />
 
-      <button className="go" disabled={!file || busy || !passcode} onClick={generate} type="button">
-        {busy ? 'Genererer…' : 'Forbedr billedet ✨'}
+      <button className="go" disabled={!pendingCount || busy || !passcode} onClick={generate} type="button">
+        {busy
+          ? `Genererer… (${doneJobs.length + jobs.filter(j => j.status === 'error').length}/${totalActive} færdige)`
+          : pendingCount > 1
+            ? `Forbedr ${pendingCount} billeder ✨`
+            : 'Forbedr billedet ✨'}
       </button>
-
-      {error && <div className="error">{error}</div>}
 
       {busy && (
         <div className="progress">
-          <div className="bar"><div style={{ width: `${pct}%` }} /></div>
-          <p>AI'en renoverer dit billede — tager ca. ½ minut ({elapsed}s)</p>
+          <div className="bar">
+            <div style={{ width: `${totalActive ? Math.round(((totalActive - runningCount - pendingCount + 0.5 * runningCount) / totalActive) * 100) : 0}%` }} />
+          </div>
+          <p>AI'en renoverer {runningCount > 1 ? `${runningCount} billeder ad gangen` : 'dit billede'} — ca. ½ minut pr. billede</p>
         </div>
       )}
 
-      {result && (
+      {doneJobs.length > 0 && (
         <div className="result">
-          <div className="section-label">Dit før/efter-kort</div>
-          <img src={result.storyCard} alt="Før/efter-kort" className="card" />
-          <div className="actions">
-            <a className="primary" href={result.storyCard} download="fotoapp-story.jpg">Hent kortet</a>
-            <a href={result.improved} download="fotoapp-improved.jpg">Hent kun efter-billedet</a>
+          <div className="result-head">
+            <div className="section-label">{doneJobs.length === 1 ? 'Dit før/efter-kort' : `${doneJobs.length} før/efter-kort`}</div>
+            {doneJobs.length > 1 && (
+              <button className="download-all" type="button" onClick={downloadAll}>Hent alle kort ⬇</button>
+            )}
           </div>
+          {jobs.filter(j => j.status === 'done' || j.status === 'error').map(j =>
+            j.status === 'error' ? (
+              <div key={j.id} className="result-item">
+                <div className="error">
+                  {j.name}: {j.error}
+                  <button className="regen" type="button" disabled={busy} onClick={() => runJobs([j.id])}>Prøv igen</button>
+                </div>
+              </div>
+            ) : (
+              <div key={j.id} className="result-item">
+                <img src={j.result!.storyCard} alt={`Før/efter-kort — ${j.name}`} className="card" />
+                <div className="actions">
+                  <a className="primary" href={j.result!.storyCard} download={`${baseName(j.name)}-story.jpg`}>Hent kortet</a>
+                  <a href={j.result!.improved} download={`${baseName(j.name)}-improved.jpg`}>Hent kun efter</a>
+                  <button type="button" disabled={busy} onClick={() => runJobs([j.id])}>Generér igen ↻</button>
+                </div>
+              </div>
+            ),
+          )}
         </div>
       )}
 

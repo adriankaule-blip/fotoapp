@@ -62,14 +62,17 @@ Output (batch): `<outDir>/{<name>-improved.jpg, <name>-story.jpg}` — names mat
 - `GEMINI_API_KEY` in `.env` (gitignored) — Google AI Studio key.
 - Pro generation ≈ 20-25s, ~$0.13/image (2K).
 
-## Web App (Next.js, built 2026-08-07)
+## Web App (Next.js; product build 2026-08-08)
 
-Drag & drop single-image app. User drops a photo, picks a **style** (klassisk, moderne, romantisk, minimalistisk, landlig, luksus — Adrian's directive: styles are the user-facing choice, the AI identifies the room/exterior itself), edits the caption, enters the passcode → gets the improved image + 9:16 story card back as downloads. **Stateless: nothing is stored** — images live in memory for the duration of the request only.
+`/` is a landing page (interactive før/efter slider hero from `public/samples/`, mobile-first). `/app` is the tool: **invite-code login**, multi-photo batch upload (2 concurrent), **mode** picker (renovering / staging "Møblering" / oprydning), **style** picker for modes that use styles (klassisk, moderne, romantisk, minimalistisk, landlig, luksus — Adrian's directive: styles are the user-facing choice, the AI identifies the room/exterior itself), caption, per-photo results with four downloads (story 9:16, feed 4:5, side-om-side 2160x1080, watermarked efter), and a history grid of past jobs.
 
-- `app/page.tsx` — client UI (Danish). Downscales to 2048px in the browser before upload (keeps requests under Vercel's 4.5 MB limit)
-- `app/api/improve/route.ts` — passcode check (`APP_PASSCODE` env), Gemini call, story card composition, returns base64 data URLs. `maxDuration = 120`
-- `lib/engine.ts` — buffer-based generation + story card composition (shared with CLI)
-- `lib/scenes.ts` — scene prompts (CLI), `lib/styles.ts` — style prompts + adaptive space detection (web)
+- `app/page.tsx` — landing (Danish); `app/app/page.tsx` — tool UI. Browser downscales to 2048px before upload
+- `app/api/improve/route.ts` — session check, Gemini call, composes all four formats, persists to GCS + Firestore, returns base64 data URLs + jobId. `maxDuration = 120`. Persistence failure never fails the request
+- `app/api/auth/{login,logout}`, `app/api/me`, `app/api/jobs`, `app/api/file/[jobId]/[name]` — auth + history + authenticated image proxy (bucket is private; no signed URLs)
+- `lib/engine.ts` — generation + all card compositors + `watermarkAfter` (baked-in EFTER — AI disclosure); `lib/auth.ts` — HMAC session cookie; `lib/db.ts` — Firestore users/jobs (NOTE: `listJobs` sorts in memory — where+orderBy would need a composite index); `lib/storage.ts` — GCS job files
+- `lib/scenes.ts` — scene prompts (CLI), `lib/styles.ts` — styles + MODES + `buildPrompt(mode, style)`. Staging/oprydning have their own keep/change contracts (STRUCTURE_BLOCK mandates furniture replacement, so it's renovering-only)
+
+**Users**: `npx tsx scripts/create-user.ts <email> "<name>" [code]` (needs ADC). Users live in Firestore `users` (doc id = email, invite code in `code`), per-user `jobCount`/`costUsd` counters. Adrian's account exists.
 
 Layout note: the `EFTER — AI` label must be positioned below the caption band (caption is composited last and covers the seam).
 
@@ -79,10 +82,11 @@ Rooms must keep their purpose: a dressing room stays a dressing room (built-in w
 
 ## Deployment (Cloud Run — same pattern as loveOS)
 
-- **Live**: https://fotoapp-3coscfrzxa-ew.a.run.app (public, passcode-gated generation)
+- **Live**: https://fotoapp-3coscfrzxa-ew.a.run.app (landing public; generation requires login)
 - GitHub: https://github.com/adriankaule-blip/fotoapp (public repo)
 - GCP project `gen-lang-client-0946074725`, region `europe-west1`, service `fotoapp`
-- **Secrets in GCP Secret Manager** (never in code/repo/image): `fotoapp-gemini-key` → env `GEMINI_API_KEY`, `fotoapp-passcode` → env `APP_PASSCODE` (fotoapp has its OWN secrets — do not touch loveOS's shared `GEMINI_API_KEY` secret)
-- Deploy: `gcloud run deploy fotoapp --source . --region europe-west1 --quiet` (Dockerfile: node:20-alpine multi-stage, Next standalone output; `ttf-dejavu` is REQUIRED or story-card captions render as empty boxes; `font-noto-serif` does not exist on Alpine)
+- **Secrets in GCP Secret Manager** (never in code/repo/image): `fotoapp-gemini-key` → env `GEMINI_API_KEY`, `fotoapp-passcode` → env `APP_PASSCODE` (legacy, unused since login), `fotoapp-session-secret` → env `SESSION_SECRET` (fotoapp has its OWN secrets — do not touch loveOS's shared `GEMINI_API_KEY` or `SESSION_SECRET` secrets)
+- **Data**: Firestore native `(default)` DB (europe-west1) — `users` + `jobs`; private GCS bucket `fotoapp-data-gen-lang-client-0946074725` — `jobs/<jobId>/{original,efter,story,feed,side}.jpg`. Cloud Run runs as the default compute SA (has `datastore.user` + bucket `objectAdmin`)
+- Deploy: `gcloud run deploy fotoapp --source . --region europe-west1 --quiet` — env vars/secrets persist across deploys (`GCS_BUCKET` is set). Dockerfile: node:20-alpine multi-stage, Next standalone output; `ttf-dejavu` is REQUIRED or story-card captions render as empty boxes; `public/` must be COPY'd explicitly (standalone output does not include it)
 - `.gcloudignore`/`.dockerignore` exclude `files_sneden/` (1 GB of photos), `output/`, `.env`
-- Local dev: `npm run dev` (reads `.env` — key + passcode)
+- Local dev: `npm run dev` (reads `.env` — `GEMINI_API_KEY`, `SESSION_SECRET`, `GCS_BUCKET`; Firestore/GCS need `gcloud auth application-default login`)
